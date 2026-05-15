@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="card">
+    <div th:if="${error}">
+        <strong style="color:#dc2626">Erreur :</strong>
+        <span th:text="${error}"></span>
+    </div>
+    <div th:if="${response}">
+        <p><strong>Message :</strong> <span th:text="${response['message']}"></span></p>
+        <p><strong>Client (sub) :</strong> <span th:text="${response['client']}"></span></p>
+        <p><strong>Scope :</strong> <span th:text="${response['scope']}"></span></p>
+    </div>
+</div>
+</body>
+</html>

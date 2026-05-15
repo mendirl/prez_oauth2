@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.1.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.1.0 http://maven.apache.org/xsd/maven-4.1.0.xsd">
+    <modelVersion>4.1.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.example.oauth2</groupId>
+    <artifactId>prez-oauth2</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>prez-oauth2</name>
+    <description>Démonstration OAuth2 Client Credentials entre deux services REST</description>
+
+    <subprojects>
+        <subproject>resource-server</subproject>
+        <subproject>client-service</subproject>
+        <subproject>frontend-service</subproject>
+    </subprojects>
+
+    <properties>
+        <java.version>25</java.version>
+    </properties>
+</project>
