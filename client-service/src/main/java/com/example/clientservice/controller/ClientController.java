@@ -19,9 +19,13 @@ public class ClientController {
 
     @GetMapping("/call")
     public Map<?, ?> callResourceServer() {
-        return restClient.get()
+        Map<?, ?> body = restClient.get()
                 .uri("http://localhost:8081/api/message")
                 .retrieve()
                 .body(Map.class);
+        if (body == null) {
+            throw new IllegalStateException("Réponse vide du resource-server");
+        }
+        return body;
     }
 }

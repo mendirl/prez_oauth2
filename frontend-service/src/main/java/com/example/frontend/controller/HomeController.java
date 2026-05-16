@@ -1,5 +1,7 @@
 package com.example.frontend.controller;
 
+import org.jspecify.annotations.Nullable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.annotation.RegisteredOAuth2AuthorizedClient;
@@ -13,6 +15,8 @@ import java.util.Map;
 
 @Controller
 public class HomeController {
+
+    private static final String RESOURCE_SERVER = "http://localhost:8081";
 
     private final RestClient restClient;
 
@@ -30,27 +34,15 @@ public class HomeController {
         model.addAttribute("user", oidcUser);
         model.addAttribute("claims", oidcUser.getClaims());
         model.addAttribute("idToken", oidcUser.getIdToken().getTokenValue());
+        model.addAttribute("authorities", oidcUser.getAuthorities());
         return "home";
     }
 
-    @GetMapping("/fragments/message")
-    public String message(@RegisteredOAuth2AuthorizedClient("keycloak") OAuth2AuthorizedClient authorizedClient,
-                          Model model) {
-        String accessToken = authorizedClient.getAccessToken().getTokenValue();
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> response = restClient.get()
-                    .uri("http://localhost:8081/api/message")
-                    .header("Authorization", "Bearer " + accessToken)
-                    .retrieve()
-                    .body(Map.class);
-            model.addAttribute("response", response);
-            model.addAttribute("error", null);
-        } catch (Exception e) {
-            model.addAttribute("response", null);
-            model.addAttribute("error", e.getMessage());
-        }
-        return "fragments/message :: card";
+    @GetMapping("/admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public String adminPage(@AuthenticationPrincipal OidcUser oidcUser, Model model) {
+        model.addAttribute("user", oidcUser);
+        return "admin";
     }
 
     @GetMapping("/fragments/token")
@@ -60,5 +52,46 @@ public class HomeController {
         model.addAttribute("expiresAt", authorizedClient.getAccessToken().getExpiresAt());
         model.addAttribute("scopes", authorizedClient.getAccessToken().getScopes());
         return "fragments/token :: card";
+    }
+
+    @GetMapping("/fragments/user")
+    public String userFragment(@RegisteredOAuth2AuthorizedClient("keycloak") OAuth2AuthorizedClient authorizedClient,
+                               Model model) {
+        callApi(authorizedClient, "/api/user/profile", model);
+        return "fragments/message :: card";
+    }
+
+    @GetMapping("/fragments/admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public String adminFragment(@RegisteredOAuth2AuthorizedClient("keycloak") OAuth2AuthorizedClient authorizedClient,
+                                Model model) {
+        callApi(authorizedClient, "/api/admin/dashboard", model);
+        return "fragments/message :: card";
+    }
+
+    @GetMapping("/fragments/message")
+    public String message(@RegisteredOAuth2AuthorizedClient("keycloak") OAuth2AuthorizedClient authorizedClient,
+                          Model model) {
+        callApi(authorizedClient, "/api/message", model);
+        return "fragments/message :: card";
+    }
+
+    private void callApi(OAuth2AuthorizedClient authorizedClient, String path, Model model) {
+        String accessToken = authorizedClient.getAccessToken().getTokenValue();
+        try {
+            @SuppressWarnings("unchecked")
+            @Nullable Map<String, Object> response = restClient.get()
+                    .uri(RESOURCE_SERVER + path)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .body(Map.class);
+            model.addAttribute("response", response);
+            model.addAttribute("error", null);
+            model.addAttribute("endpoint", path);
+        } catch (Exception e) {
+            model.addAttribute("response", null);
+            model.addAttribute("error", e.getMessage());
+            model.addAttribute("endpoint", path);
+        }
     }
 }

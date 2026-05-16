@@ -1,6 +1,12 @@
 {
   "realm": "demo",
   "enabled": true,
+  "roles": {
+    "realm": [
+      { "name": "ADMIN", "description": "Administrateur (accès complet)" },
+      { "name": "USER",  "description": "Utilisateur standard" }
+    ]
+  },
   "clients": [
     {
       "clientId": "demo-client",
@@ -50,12 +56,33 @@
       "lastName": "User",
       "email": "demo@example.com",
       "credentials": [
-        {
-          "type": "password",
-          "value": "demo",
-          "temporary": false
-        }
-      ]
+        { "type": "password", "value": "demo", "temporary": false }
+      ],
+      "realmRoles": [ "USER" ]
+    },
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Admin",
+      "email": "alice@example.com",
+      "credentials": [
+        { "type": "password", "value": "alice", "temporary": false }
+      ],
+      "realmRoles": [ "ADMIN", "USER" ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "User",
+      "email": "bob@example.com",
+      "credentials": [
+        { "type": "password", "value": "bob", "temporary": false }
+      ],
+      "realmRoles": [ "USER" ]
     }
   ]
 }
