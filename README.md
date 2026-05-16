@@ -1,183 +1,197 @@
-# Démonstration OAuth2 / OIDC
+# Démonstration OAuth2 / OIDC avec Keycloak, Spring Boot 4 & HTMX
 
-Ce projet illustre **deux flows OAuth2** distincts avec Keycloak comme Authorization Server,
-ainsi que la **gestion des rôles** et l'affichage conditionnel selon les droits de l'utilisateur :
+Projet pédagogique multi-modules illustrant **deux flows OAuth2** et la **gestion fine des rôles**
+sur une stack moderne : **Java 25**, **Spring Boot 4.0.5**, **Maven 4.1.0**, **JSpecify**
+(null-safety vérifiée à la compilation via NullAway/ErrorProne), **Thymeleaf + HTMX**.
 
-1. **Client Credentials** (M2M) — entre `client-service` et `resource-server`.
-2. **Authorization Code + OIDC** (utilisateur) — depuis `frontend-service` (Spring Boot + Thymeleaf + HTMX),
-   avec UI différenciée selon les rôles Keycloak.
+| Flow | Acteur | Module | Cas d'usage |
+|------|--------|--------|-------------|
+| **Client Credentials** (M2M) | service ↔ service | `client-service` → `resource-server` | API consommée par un backend sans utilisateur |
+| **Authorization Code + OIDC** | utilisateur ↔ navigateur | `frontend-service` → `resource-server` | Login web, rôles, UI conditionnelle |
 
-## Architecture
+---
+
+## 1. Architecture
 
 ```
                           ┌─────────────────┐
-                          │    Keycloak     │
-                          │   (port 8080)   │
-                          │  realm: demo    │
-                          │ rôles: ADMIN /  │
-                          │        USER     │
+                          │    Keycloak     │  realm: demo
+                          │   :8080         │  rôles realm: ADMIN, USER
                           └────────┬────────┘
-                                   │
+            client_credentials     │     authorization_code + PKCE
         ┌──────────────────────────┼──────────────────────────┐
-        │ Client Credentials       │      Authorization Code  │
         ▼                          │                          ▼
 ┌─────────────────┐                │                ┌─────────────────┐
 │  client-service │                │                │ frontend-service│
-│   (port 8082)   │                │                │   (port 8083)   │
-│  flow M2M       │                │                │  Thymeleaf+HTMX │
+│      :8082      │                │                │      :8083      │
+│  RestClient M2M │                │                │ Thymeleaf + HTMX│
 └────────┬────────┘                │                └────────┬────────┘
-         │                         │                         │
-         │  Bearer token           │                         │  Bearer token (+ rôles)
-         ▼                         │                         ▼
-              ┌──────────────────────────────────────┐
-              │           resource-server            │
-              │             (port 8081)              │
-              │   valide les JWT via JWKS Keycloak   │
-              │   /api/admin/**  → hasRole('ADMIN')  │
-              │   /api/user/**   → hasRole('USER')   │
-              └──────────────────────────────────────┘
+         │  Bearer JWT             │                         │  Bearer JWT
+         └───────────────► ┌─────────────────┐ ◄──────────────┘
+                           │ resource-server │
+                           │      :8081      │
+                           │ JWT JWKS + RBAC │
+                           └─────────────────┘
 ```
 
-## Prérequis
+---
 
-- Java 25
-- Maven 3.9+
-- Docker & Docker Compose
+## 2. Prérequis
 
-## Lancement
+| Outil | Version |
+|-------|---------|
+| JDK | **25** (testé GraalVM 25.0.3) |
+| Maven | **3.9+** ou **4.x** (modelVersion 4.1.0) |
+| Docker / Docker Compose | récent |
 
-### 1. Démarrer Keycloak
+---
+
+## 3. Démarrage rapide
 
 ```bash
+# 1. Keycloak (importe realm-demo.json au boot, ~30 s)
 docker compose up -d
-```
+curl -fsS http://localhost:8080/realms/demo > /dev/null && echo "Keycloak OK"
 
-> Si Keycloak tournait déjà avant ces changements, relancez-le pour réimporter
-> le realm avec les nouveaux rôles et utilisateurs :
-> ```bash
-> docker compose down -v && docker compose up -d
-> ```
-
-Attendre que Keycloak soit prêt (~30 s) :
-```bash
-curl http://localhost:8080/realms/demo
-```
-
-### 2. Compiler le projet
-
-```bash
+# 2. Build complet (3 modules)
 mvn clean package -DskipTests
+
+# 3. Démarrer les 3 services (3 terminaux)
+mvn -pl resource-server  spring-boot:run   # :8081
+mvn -pl client-service   spring-boot:run   # :8082
+mvn -pl frontend-service spring-boot:run   # :8083
 ```
 
-### 3. Démarrer les services (3 terminaux)
+> **Realm déjà importé ?** Relancer avec `docker compose down -v && docker compose up -d`
+> pour réimporter les rôles/utilisateurs.
+
+---
+
+## 4. Utilisateurs & rôles (realm `demo`)
+
+| Utilisateur | Mot de passe | Rôles | Ce qu'il voit sur `/home` |
+|-------------|--------------|-------|---------------------------|
+| `alice` | `alice` | `ADMIN`, `USER` | Espace USER **+** espace ADMIN (secret) |
+| `bob`   | `bob`   | `USER`          | Espace USER ; zone ADMIN masquée + 403 sur API |
+| `demo`  | `demo`  | `USER`          | Identique à `bob` |
+
+UI conditionnelle via `sec:authorize="hasRole('ADMIN')"` (Thymeleaf Spring Security
+extras). La page `/admin` est doublement protégée : `@PreAuthorize` **et** règle
+`hasRole('ADMIN')` dans la `SecurityFilterChain`.
+
+---
+
+## 5. Endpoints
+
+### `resource-server` (:8081)
+
+| Méthode | Endpoint | Accès | Description |
+|---|---|---|---|
+| GET | `/api/public/hello`    | public                  | Pas de token |
+| GET | `/api/message`         | authentifié             | Renvoie sub, roles, scope |
+| GET | `/api/user/profile`    | `USER` ou `ADMIN`       | Zone utilisateur |
+| GET | `/api/admin/dashboard` | `ADMIN`                 | Données sensibles |
+
+Les rôles sont extraits du claim `realm_access.roles` du JWT Keycloak via un
+`JwtAuthenticationConverter` qui les préfixe `ROLE_`.
+
+### `client-service` (:8082)
+
+| Méthode | Endpoint | Description |
+|---|---|---|
+| GET | `/client/call` | Récupère un token via Client Credentials puis appelle `/api/message`. |
+
+### `frontend-service` (:8083)
+
+| Route | Description |
+|---|---|
+| `/`              | Page d'accueil + bouton « Se connecter avec Keycloak » |
+| `/home`          | Après login : claims, rôles, boutons HTMX |
+| `/admin`         | Page réservée `ADMIN` |
+| `/fragments/*`   | Fragments HTMX (`token`, `message`, `user`, `admin`) |
+| `/logout`        | RP-Initiated Logout (Keycloak) |
+
+---
+
+## 6. Tests manuels
 
 ```bash
-# Terminal 1 — Resource Server (8081)
-cd resource-server && mvn spring-boot:run
-
-# Terminal 2 — Client Service M2M (8082)
-cd client-service && mvn spring-boot:run
-
-# Terminal 3 — Frontend OIDC (8083)
-cd frontend-service && mvn spring-boot:run
-```
-
-## Utilisateurs & rôles (realm `demo`)
-
-| Utilisateur | Mot de passe | Rôles realm     | Ce que voit l'utilisateur                                |
-|-------------|--------------|-----------------|----------------------------------------------------------|
-| `alice`     | `alice`      | `ADMIN`, `USER` | Espace utilisateur **+** espace administrateur + secret  |
-| `bob`       | `bob`        | `USER`          | Espace utilisateur uniquement, message « accès refusé » sur la zone admin |
-| `demo`      | `demo`       | `USER`          | Idem `bob` (compatibilité historique)                    |
-
-L'interface (`home.html`) utilise `sec:authorize="hasRole('ADMIN')"` (Thymeleaf
-Spring Security extras) pour afficher/masquer les sections.
-La page `/admin` est protégée par `@PreAuthorize("hasRole('ADMIN')")` côté
-contrôleur **et** par `hasRole('ADMIN')` côté chaîne de sécurité HTTP.
-
-## Tests
-
-### A) Flow Client Credentials (M2M)
-
-```bash
-curl http://localhost:8082/client/call
-```
-
-Le service-account du client `demo-client` n'a pas de rôle utilisateur, l'endpoint
-appelé est `/api/message` (authentifié simple).
-
-### B) Flow Authorization Code (OIDC, utilisateur)
-
-1. Ouvrir <http://localhost:8083> dans un navigateur (privé, ou un par utilisateur).
-2. Cliquer sur **« Se connecter avec Keycloak »**.
-3. Se connecter, par exemple avec `alice` / `alice` puis comparer avec `bob` / `bob`.
-4. Sur `/home`, observer :
-   - les **rôles** affichés (badge `ADMIN` ou `USER`),
-   - l'espace utilisateur (vert) accessible à tous,
-   - l'espace administrateur (orange) visible **uniquement** pour `alice`,
-   - pour `bob` : message « 🚫 Accès refusé » sur la zone admin.
-5. Cliquer sur les boutons HTMX pour appeler le `resource-server` :
-   - `/api/user/profile`  → OK pour tous,
-   - `/api/admin/dashboard` → 200 pour `alice`, **403** pour `bob`,
-   - `/api/message`       → OK pour tous.
-
-### Endpoint public (sans token)
-
-```bash
+# Endpoint public (sans token)
 curl http://localhost:8081/api/public/hello
+
+# Flow M2M
+curl http://localhost:8082/client/call | jq
+
+# Flow utilisateur : ouvrir http://localhost:8083 dans 2 navigateurs privés
+#   - alice/alice → voit les zones USER + ADMIN
+#   - bob/bob     → voit USER, reçoit 403 sur /api/admin/dashboard
 ```
 
-### Tester directement les endpoints avec un token (Password Grant désactivé)
-
-Activez si besoin `directAccessGrantsEnabled: true` sur `frontend-client`
-pour pouvoir récupérer un token utilisateur via :
+Récupérer un access token utilisateur en ligne de commande (activer
+`directAccessGrantsEnabled` sur `frontend-client` si besoin) :
 
 ```bash
-curl -s -X POST http://localhost:8080/realms/demo/protocol/openid-connect/token \
+TOKEN=$(curl -s -X POST http://localhost:8080/realms/demo/protocol/openid-connect/token \
   -d "grant_type=password" -d "username=alice" -d "password=alice" \
-  -d "client_id=frontend-client" -d "client_secret=frontend-secret" | jq -r .access_token
+  -d "client_id=frontend-client" -d "client_secret=frontend-secret" | jq -r .access_token)
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/admin/dashboard
 ```
 
-## Structure du projet
+---
+
+## 7. Clients Keycloak (realm `demo`)
+
+| clientId          | Type         | Flow                  | Secret            | Redirect URI |
+|-------------------|--------------|-----------------------|-------------------|--------------|
+| `demo-client`     | confidentiel | Client Credentials    | `demo-secret`     | — |
+| `frontend-client` | confidentiel | Authorization Code    | `frontend-secret` | `http://localhost:8083/login/oauth2/code/keycloak` |
+
+---
+
+## 8. Structure du projet
 
 ```
 prez_oauth2/
-├── docker-compose.yml          # Keycloak
-├── keycloak/
-│   └── realm-demo.json         # Realm + rôles + clients + users (import au démarrage)
-├── resource-server/            # API REST protégée (port 8081)
-├── client-service/             # Client OAuth2 Client Credentials (port 8082)
-└── frontend-service/           # Front Spring Boot + Thymeleaf + HTMX, OIDC Auth Code (port 8083)
+├── pom.xml                          # parent : spring-boot-starter-parent 4.0.5, Java 25, nullability plugin
+├── docker-compose.yml               # Keycloak 25.0.6
+├── keycloak/realm-demo.json         # realm + rôles + clients + users
+├── resource-server/                 # API REST protégée (:8081)
+├── client-service/                  # Client OAuth2 M2M (:8082)
+└── frontend-service/                # Front Thymeleaf + HTMX, OIDC (:8083)
 ```
 
-## Endpoints clés du `resource-server`
+Particularités Maven :
+- `modelVersion` **4.1.0** sur tous les POMs ; `<subprojects>` (nouvelle syntaxe) à la place de `<modules>`.
+- Héritage de `spring-boot-starter-parent` (BOM, plugin, encoding, java.version).
+- `nullability-maven-plugin` 0.3.0 (extension) → configure ErrorProne 2.47.0 + NullAway 0.13.1
+  en mode JSpecify pour tous les sous-projets, vérification null-safety à la compilation.
 
-| Endpoint                  | Accès                          |
-|---------------------------|--------------------------------|
-| `GET /api/public/hello`   | Public, pas de token requis    |
-| `GET /api/message`        | Authentifié (n'importe quel JWT) |
-| `GET /api/user/profile`   | `hasRole('USER')` ou `ADMIN`   |
-| `GET /api/admin/dashboard`| `hasRole('ADMIN')` uniquement  |
+---
 
-Les rôles sont extraits du claim `realm_access.roles` du JWT Keycloak via un
-`JwtAuthenticationConverter` qui les préfixe `ROLE_` pour Spring Security.
-
-## Clients Keycloak (realm `demo`)
-
-| clientId          | Type          | Flow                  | Secret             |
-|-------------------|---------------|-----------------------|--------------------|
-| `demo-client`     | confidentiel  | Client Credentials    | `demo-secret`      |
-| `frontend-client` | confidentiel  | Authorization Code    | `frontend-secret`  |
-
-## Concepts clés
+## 9. Concepts clés
 
 | Concept | Description |
 |---|---|
-| **Client Credentials** | Flow OAuth2 M2M, sans utilisateur (service-account). |
-| **Authorization Code** | Flow OAuth2/OIDC standard avec utilisateur, redirection navigateur et code échangé contre un token. |
-| **OIDC** | Couche d'identité au-dessus d'OAuth2 : ID Token (JWT) décrivant l'utilisateur authentifié. |
-| **Resource Server** | Valide le JWT via la clé publique de Keycloak (JWKS) et fait l'autorisation basée sur les rôles. |
-| **Rôles Keycloak**     | Présents dans `realm_access.roles` de l'access token ; mappés en `ROLE_*` côté Spring. |
-| **HTMX** | Permet au front Thymeleaf de rafraîchir des fragments HTML via des appels AJAX déclaratifs. |
-| **`sec:authorize`** | Attribut Thymeleaf (extras Spring Security) qui affiche/masque un bloc HTML selon le rôle courant. |
-| **RP-Initiated Logout** | Déconnexion côté Keycloak déclenchée par le frontend (`OidcClientInitiatedLogoutSuccessHandler`). |
+| **Client Credentials** | Flow OAuth2 sans utilisateur, service-account du client. |
+| **Authorization Code + PKCE** | Flow standard OIDC : redirection navigateur → code → token. |
+| **OIDC** | Couche d'identité sur OAuth2 : ID Token JWT décrivant l'utilisateur. |
+| **JWKS** | Le resource-server valide les JWT via la clé publique exposée par Keycloak. |
+| **`realm_access.roles`** | Rôles realm Keycloak, mappés en `ROLE_*` côté Spring. |
+| **`sec:authorize`** | Attribut Thymeleaf qui rend conditionnellement selon `hasRole(...)`. |
+| **HTMX** | Le front recharge des fragments HTML sans JS, via `hx-get` / `hx-target`. |
+| **RP-Initiated Logout** | Logout déclenché par le frontend, propagé à Keycloak. |
+| **JSpecify `@NullMarked`** | Non-null par défaut au niveau package ; `@Nullable` localement. |
+| **NullAway** | Vérifie statiquement la null-safety à la compilation (échec = build cassé). |
+
+---
+
+## 10. Dépannage
+
+| Symptôme | Cause probable | Remède |
+|---|---|---|
+| `Connection refused :8080` | Keycloak pas prêt | Attendre 30 s, vérifier `docker logs keycloak` |
+| Login OK mais pas de badge ADMIN | Realm pas réimporté | `docker compose down -v && up -d` |
+| `401 invalid_token` sur `/api/*` | Token expiré ou mauvais issuer | Vérifier `issuer-uri` dans `application.yml` |
+| `403` sur `/api/admin/**` avec alice | Realm non importé / mapping rôles KO | Inspecter le JWT sur https://jwt.io |
+| Build cassé NullAway | Violation de nullité | Annoter `@Nullable` ou gérer le `null` explicitement |
