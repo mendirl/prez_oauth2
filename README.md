@@ -65,6 +65,18 @@ mvn -pl frontend-service spring-boot:run   # :8083
 > **Realm déjà importé ?** Relancer avec `docker compose down -v && docker compose up -d`
 > pour réimporter les rôles/utilisateurs.
 
+### Tout-en-un via le script `start-all.sh`
+
+Un script à la racine fait tout d'un coup : réimport du realm (rôles/utilisateurs),
+build Maven, lancement des 3 services en arrière-plan (logs dans `/tmp/*.log`).
+
+```bash
+./start-all.sh          # (re)lance Keycloak + build + 3 services
+./start-all.sh stop     # arrête tous les services et Keycloak (volume inclus)
+```
+
+Suivre les logs : `tail -f /tmp/{resource-server,client-service,frontend-service}.log`.
+
 ---
 
 ## 4. Utilisateurs & rôles (realm `demo`)
