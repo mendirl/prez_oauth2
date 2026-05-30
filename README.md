@@ -7,7 +7,7 @@ sur une stack moderne : **Java 25**, **Spring Boot 4.0.5**, **Maven 4.1.0**, **J
 | Flow | Acteur | Module | Cas d'usage |
 |------|--------|--------|-------------|
 | **Client Credentials** (M2M) | service ↔ service | `client-service` → `resource-server` | API consommée par un backend sans utilisateur |
-| **Authorization Code + OIDC** | utilisateur ↔ navigateur | `frontend-service` → `resource-server` | Login web, rôles, UI conditionnelle |
+| **Authorization Code + PKCE + OIDC** | utilisateur ↔ navigateur | `frontend-service` → `resource-server` | Login web, rôles, UI conditionnelle |
 
 ---
 
@@ -174,7 +174,7 @@ Particularités Maven :
 | Concept | Description |
 |---|---|
 | **Client Credentials** | Flow OAuth2 sans utilisateur, service-account du client. |
-| **Authorization Code + PKCE** | Flow standard OIDC : redirection navigateur → code → token. |
+| **Authorization Code + PKCE** | Flow standard OIDC : redirection navigateur → code → token, sécurisé par un `code_verifier`/`code_challenge` (S256). Activé côté Spring via `OAuth2AuthorizationRequestCustomizers.withPkce()` et exigé côté Keycloak via `pkce.code.challenge.method=S256`. |
 | **OIDC** | Couche d'identité sur OAuth2 : ID Token JWT décrivant l'utilisateur. |
 | **JWKS** | Le resource-server valide les JWT via la clé publique exposée par Keycloak. |
 | **`realm_access.roles`** | Rôles realm Keycloak, mappés en `ROLE_*` côté Spring. |

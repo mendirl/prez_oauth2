@@ -21,6 +21,9 @@ import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
 import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.SecurityFilterChain;
@@ -41,6 +44,8 @@ public class SecurityConfig {
             )
             .oauth2Login(oauth -> oauth
                 .defaultSuccessUrl("/home", true)
+                .authorizationEndpoint(a -> a.authorizationRequestResolver(
+                        pkceAuthorizationRequestResolver(clientRegistrationRepository)))
                 .userInfoEndpoint(u -> u.oidcUserService(keycloakOidcUserService()))
             )
             .logout(logout -> logout
@@ -111,6 +116,21 @@ public class SecurityConfig {
                 new OidcClientInitiatedLogoutSuccessHandler(clientRegistrationRepository);
         handler.setPostLogoutRedirectUri("{baseUrl}/");
         return handler;
+    }
+
+    /**
+     * Active PKCE (RFC 7636) sur le flow Authorization Code, y compris pour un
+     * client confidentiel comme `frontend-client`. Par défaut, Spring Security
+     * n'active PKCE que pour les clients publics ; ici on le force via
+     * `OAuth2AuthorizationRequestCustomizers.withPkce()` (code_challenge S256).
+     */
+    private OAuth2AuthorizationRequestResolver pkceAuthorizationRequestResolver(
+            ClientRegistrationRepository clientRegistrationRepository) {
+        DefaultOAuth2AuthorizationRequestResolver resolver =
+                new DefaultOAuth2AuthorizationRequestResolver(
+                        clientRegistrationRepository, "/oauth2/authorization");
+        resolver.setAuthorizationRequestCustomizer(OAuth2AuthorizationRequestCustomizers.withPkce());
+        return resolver;
     }
 
     @Bean
