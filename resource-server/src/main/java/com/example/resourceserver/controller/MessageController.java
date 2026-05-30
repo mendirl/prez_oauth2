@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -15,13 +16,16 @@ public class MessageController {
 
     @GetMapping("/message")
     public Map<String, Object> getMessage(@AuthenticationPrincipal Jwt jwt) {
-        return Map.of(
-            "message", "Bonjour depuis le Resource Server !",
-            "subject", jwt.getClaimAsString("sub"),
-            "preferred_username", String.valueOf(jwt.getClaimAsString("preferred_username")),
-            "scope", String.valueOf(jwt.getClaimAsString("scope")),
-            "roles", extractRoles(jwt)
-        );
+        // Utilisation d'un HashMap car Map.of(...) interdit les valeurs null
+        // (certains claims comme `scope` ou `preferred_username` peuvent être absents
+        // selon le client/flow OAuth2).
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("message", "Bonjour depuis le Resource Server !");
+        body.put("subject", String.valueOf(jwt.getClaimAsString("sub")));
+        body.put("preferred_username", String.valueOf(jwt.getClaimAsString("preferred_username")));
+        body.put("scope", String.valueOf(jwt.getClaimAsString("scope")));
+        body.put("roles", extractRoles(jwt));
+        return body;
     }
 
     @GetMapping("/user/profile")
