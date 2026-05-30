@@ -77,6 +77,41 @@ build Maven, lancement des 3 services en arrière-plan (logs dans `/tmp/*.log`).
 
 Suivre les logs : `tail -f /tmp/{resource-server,client-service,frontend-service}.log`.
 
+### Compilation native (GraalVM)
+
+La JVM utilisée est **GraalVM 25** : chaque module exécutable expose un profil
+Maven `native` (hérité du `spring-boot-starter-parent`) qui déclenche le
+traitement AOT Spring Boot puis `native-maven-plugin` pour produire un binaire
+natif (pas de JVM au runtime).
+
+```bash
+# Image native d'un module (nécessite GraalVM + native-image dans le PATH)
+#
+# IMPORTANT — projet multi-modules :
+# Ne PAS invoquer `native:compile` au niveau du reactor avec `-pl <module> -am`,
+# sinon le goal s'exécute sur le parent POM (packaging=pom) et échoue avec
+# "Image classpath is empty". Il faut :
+#   1. faire un `package` au niveau du reactor (génère le jar du module),
+#   2. puis lancer `native:compile` DANS le dossier du module.
+
+# 1) package au reactor (AOT + jar)
+mvn -Pnative -DskipTests -pl resource-server -am package
+
+# 2) compilation native dans le module
+(cd resource-server  && mvn -Pnative -DskipTests native:compile)
+(cd client-service   && mvn -Pnative -DskipTests native:compile)
+(cd frontend-service && mvn -Pnative -DskipTests native:compile)
+
+# Exécuter le binaire produit dans target/
+./resource-server/target/resource-server
+./client-service/target/client-service
+./frontend-service/target/frontend-service
+```
+
+> La première compilation native est longue (plusieurs minutes par module) et
+> consomme beaucoup de RAM. Pour un build conteneurisé, voir le goal
+> `spring-boot:build-image` (profil `native` également supporté).
+
 ---
 
 ## 4. Utilisateurs & rôles (realm `demo`)
